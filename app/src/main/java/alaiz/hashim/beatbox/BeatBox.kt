@@ -2,10 +2,8 @@ package alaiz.hashim.beatbox
 
 import android.content.res.AssetFileDescriptor
 import android.content.res.AssetManager
-import android.media.MediaPlayer
 import android.media.SoundPool
 import android.util.Log
-import java.io.FileDescriptor
 import java.io.IOException
 
 private const val TAG = "BeatBox"
@@ -13,9 +11,10 @@ private const val SOUNDS_FOLDER = "sample_sounds"
 private const val MAX_SOUNDS = 1
 
 class BeatBox(private val assets: AssetManager) {
-    val sounds: List<Sound>
 
-    //private val mp:MediaPlayer?=null
+    val sounds: List<Sound>
+    lateinit var soundObj:Sound
+
     private val soundPool = SoundPool.Builder()
         .setMaxStreams(MAX_SOUNDS)
         .build()
@@ -24,10 +23,26 @@ class BeatBox(private val assets: AssetManager) {
         sounds = loadSounds()
     }
 
+
     fun play(sound: Sound) {
+        this.soundObj=sound
         sound.soundId?.let {
             soundPool.play(it, 1.0f, 1.0f, 1, 0, rate)
         }
+    }
+
+
+    fun pause(){
+        soundObj.soundId?.let {
+            soundPool.pause(it)
+        }
+
+    }
+    fun resume(){
+        soundObj.soundId?.let {
+            soundPool.resume(it)
+        }
+
     }
 
 
