@@ -1,90 +1,132 @@
 package alaiz.hashim.beatbox
 
-import android.content.res.AssetFileDescriptor
-import android.content.res.AssetManager
-import android.media.SoundPool
-import android.util.Log
-import java.io.IOException
+import alaiz.hashim.beatbox.databinding.ActivityMainBinding
+import alaiz.hashim.beatbox.databinding.ListItemSoundBinding
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
+import androidx.appcompat.app.AppCompatActivity
+import android.os.Bundle
+import android.view.ViewGroup
+import android.widget.SeekBar
+import androidx.annotation.RequiresApi
+import androidx.databinding.DataBindingUtil
+import androidx.lifecycle.ViewModelProvider
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 
-private const val TAG = "BeatBox"
-private const val SOUNDS_FOLDER = "sample_sounds"
-private const val MAX_SOUNDS = 1
+class MainActivity : AppCompatActivity(), AudioManager.OnAudioFocusChangeListener {
 
-class BeatBox(private val assets: AssetManager) {
-
-    val sounds: List<Sound>
-    lateinit var soundObj:Sound
-
-    private val soundPool = SoundPool.Builder()
-        .setMaxStreams(MAX_SOUNDS)
-        .build()
-
-    init {
-        sounds = loadSounds()
+    val beatBoxViewModel: BeatBoxViewModel by lazy {
+        ViewModelProvider(this).get(BeatBoxViewModel()::class.java)
     }
 
+    var audioManager: AudioManager? = null
+    var audioFocusRequest: AudioFocusRequest? = null
 
-    fun play(sound: Sound) {
-        this.soundObj=sound
-        sound.soundId?.let {
-            soundPool.play(it, 1.0f, 1.0f, 1, 0, rate)
-        }
-    }
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setAudioFocusChangeListener()
+        BeatBoxViewModel.passContext(this)
 
-
-    fun pause(){
-        soundObj.soundId?.let {
-            soundPool.pause(it)
-        }
-
-    }
-    fun resume(){
-        soundObj.soundId?.let {
-            soundPool.resume(it)
+        val binding: ActivityMainBinding =
+            DataBindingUtil.setContentView(this, R.layout.activity_main)
+        binding.recyclerView.apply {
+            layoutManager = GridLayoutManager(context, 3)
+            adapter = SoundAdapter(beatBoxViewModel.beatBox.sounds)
         }
 
+        binding.seekBar.setOnSeekBarChangeListener(object :
+            SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seek: SeekBar, progress: Int, fromUser: Boolean) {
+
+                if (fromUser) {
+                    BeatBox.settingRate(progress.toFloat())
+                    binding.playBackSpeed.setText("Playback speed" + progress + "%")
+
+
+                }
+
+            }
+
+            override fun onStartTrackingTouch(seek: SeekBar) {
+
+            }
+
+            override fun onStopTrackingTouch(seek: SeekBar) {
+
+            }
+        })
+
     }
 
+    //------------- pause audio while call coming----------
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun setAudioFocusChangeListener() {
+
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager?
 
 
-    fun release() {
-        soundPool.release()
+        audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAcceptsDelayedFocusGain(true)
+            .setOnAudioFocusChangeListener(this).build()
+        audioManager?.requestAudioFocus(audioFocusRequest!!)
+
     }
 
-    private fun loadSounds(): List<Sound> {
-        val soundNames: Array<String>
-        try {
-            soundNames = assets.list(SOUNDS_FOLDER)!!
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Could not list assets", e)
-            return emptyList()
+    override fun onAudioFocusChange(focusChange: Int) {
+        if (focusChange <= 0) {
+            beatBoxViewModel.beatBox.pause()
+        } else {
+            beatBoxViewModel.beatBox.resume()
         }
-        val sounds = mutableListOf<Sound>()
-        soundNames.forEach { filename ->
-            val assetPath = "$SOUNDS_FOLDER/$filename"
-            val sound = Sound(assetPath)
-            try {
-                load(sound)
-                sounds.add(sound)
-            } catch (ioe: IOException) {
-                Log.e(TAG, "Cound not load sound $filename", ioe)
+
+    }
+
+
+    private inner class SoundHolder(private val binding: ListItemSoundBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+        init {
+            binding.viewModel = SoundViewModel(beatBoxViewModel.beatBox)
+        }
+
+        fun bind(sound: Sound) {
+            binding.apply {
+                viewModel?.sound = sound
+                executePendingBindings()
             }
         }
-        return sounds
     }
 
-    private fun load(sound: Sound) {
-        val afd: AssetFileDescriptor = assets.openFd(sound.assetPath)
-        val soundId = soundPool.load(afd, 1)
-        sound.soundId = soundId
-    }
-
-    companion object {
-        var rate: Float = 1.0f
-        fun settingRate(rate: Float) {
-            this.rate = rate/20
+    private inner class SoundAdapter(private val sounds: List<Sound>) :
+        RecyclerView.Adapter<SoundHolder>() {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int):
+                SoundHolder {
+            val binding = DataBindingUtil.inflate<ListItemSoundBinding>(
+                layoutInflater,
+                R.layout.list_item_sound,
+                parent,
+                false
+            )
+            return SoundHolder(binding)
         }
+
+        override fun onBindViewHolder(holder: SoundHolder, position: Int) {
+
+            val sound = sounds[position]
+            holder.bind(sound)
+        }
+
+        override fun getItemCount() = sounds.size
     }
+
 
 }
